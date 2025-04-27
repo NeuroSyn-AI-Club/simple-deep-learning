@@ -50,6 +50,7 @@ class Layer:
 
 
     def update_parameters(self):
+        m = self.weighted_sum.shape[1]
         if self.optimizer is None:
             return
         update_weights, update_biases = self.optimizer.update_parameters(self.weight_gradient, self.bias_gradient)
@@ -106,33 +107,71 @@ class Model:
         for layer in self.layers:
             layer.update_parameters()
 
-    def train(self, X, Y, epochs, batch_size, print_cost_every=0):
+    def train(self, X, Y, epochs, batch_size, print_cost_every=0, X_dev=None, Y_dev=None):
         if X.shape[0] != self.shape[0]:
             raise ValueError("The features of the training data must equal the number of neurons in the first layer")
         costs = []
+        accuracies = []
+        dev_costs = []
+        dev_accuracies = []
         m = X.shape[1]
 
+        # Iterate over epochs
         for i in range(epochs):
             mini_batches = random_mini_batches(X, Y, batch_size)
             epoch_cost_total = 0
+            epoch_accuracy_total = 0
 
+            if X_dev is not None:
+                dev_AL = self.forward(X_dev)
+                dev_predictions = np.argmax(dev_AL, axis=0)
+                dev_true_labels = np.argmax(Y_dev, axis=0)
+                dev_epoch_cost = self.objective.cost(dev_AL, Y_dev) 
+                dev_epoch_accuracy = np.sum(dev_predictions == dev_true_labels) / X_dev.shape[1]
+                dev_costs.append(dev_epoch_cost)
+                dev_accuracies.append(dev_epoch_accuracy)
+
+            # Iterate over all mini_batches
             for X_batch, Y_batch in mini_batches:
                 if X_batch.shape[1] == 0: continue
 
+                # Forward Propagate
                 AL = self.forward(X_batch)
-                batch_cost = self.objective.cost(AL, Y_batch)
-                epoch_cost_total += batch_cost * X_batch.shape[1]
 
+                # Calculate Train, Validation(Dev set) costs and accuracies
+                predictions = np.argmax(AL, axis=0)
+                true_labels = np.argmax(Y_batch, axis=0)
+                batch_cost = self.objective.cost(AL, Y_batch)
+                batch_accuracy = np.sum(predictions == true_labels)
+                epoch_cost_total += batch_cost * X_batch.shape[1]
+                epoch_accuracy_total += batch_accuracy
+
+                # Calculate objective derivative and backpropagate (parameters are updated in layers individually)
                 dAL = self.objective.cost_prime(AL, Y_batch)
+
                 self.backward(dAL)
 
+            # Keep cost and accuracy history
             cost_avg = epoch_cost_total / m
+            accuracy_avg = epoch_accuracy_total / m
             costs.append(cost_avg)
+            accuracies.append(accuracy_avg)
+
+            # If a dev set is passed, calculate accuracy and costs
+
 
             if print_cost_every > 0 and (i % print_cost_every == 0 or i == epochs - 1):
-                print(f"Cost after epoch {i}: {cost_avg}")
+                print(f"Epoch {i}:")
+                print(f"  Training Cost: {cost_avg}")
+                print(f"  Training Accuracy: {accuracy_avg*100}%")
+                if X_dev is not None:
+                    print(f"  Validation Cost: {dev_epoch_cost}")
+                    print(f"  Validation Accuracy: {dev_epoch_accuracy*100}%")
 
-        return costs
+        if X_dev is not None:
+            return costs, accuracies, dev_costs, dev_accuracies
+        else:
+            return costs, accuracies
 
     def predict(self, X, Y=None):
         AL = self.forward(X)

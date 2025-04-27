@@ -9,6 +9,7 @@ from Optimizers import *
 from Metrics_and_Visualizations import *
 
 mnist = fetch_openml('mnist_784', version=1, as_frame=False)
+np.random.seed(2442)
 
 # Data Pre-processing and labels
 X, y = mnist["data"], mnist["target"]
@@ -20,25 +21,29 @@ for i in range(m):
 X_reshaped = X.T.reshape(784, -1)
 X_reshaped = X_reshaped / 255.0 # Normalize the image values (very important)
 
-
-X_train = X_reshaped[:, :60000]  # (784, 60000)
+X_train = X_reshaped[:, :55000]  # (784, 55000)
 X_test = X_reshaped[:, 60000:]   # (784, 10000)
+X_dev = X_reshaped[:, 55000:60000] # (784, 5000)
 
-y_train = y_vector[:, :60000]  # (10, 60000)
+y_train = y_vector[:, :55000]  # (10, 55000)
 y_test = y_vector[:, 60000:].astype(np.int64)  # (10, 10000)
+y_dev = y_vector[:, 55000:60000] # (784, 5000)
 y_test_labels = np.astype(y[60000:], np.int64)
 
 # Set Model Hyperparameters
-network_shape = [784, 56, 28, 10]
-activations = [Swish(), Swish(), Sigmoid()]
+network_shape = [784, 56, 10, 28, 10]
+activations = [LeakyReLU(), LeakyReLU(), LeakyReLU(), Sigmoid()]
 initializer = HeInitializer()
-objective = CrossEntropyLoss()
+objective = MeanSquaredError()
 optimizer = AdamOptimizer(0.00074, 0.9, 0.999, 1e-8)
-neural_network = Model(network_shape, activations, initializer, objective, optimizer)
-costs = neural_network.train(X_train, y_train, 30, 16, print_cost_every=10)
+
+
+neural_network = Model(network_shape, activations, initializer, objective, optimizer, lambd=0.01)
+costs, accuracies, dev_costs, dev_accuracies = neural_network.train(X_train, y_train, 20, 32, print_cost_every=1, X_dev=X_dev, Y_dev=y_dev)
 predictions, accuracy, correct_matches, false_matches = neural_network.predict(X_test, y_test)
 
-loss:dict[str, int] = dict(loss=costs, val_loss=0, accuracy=accuracy, val_accuracy=0)
+loss:dict[str, int] = dict(loss=costs, val_loss=dev_costs, accuracy=accuracies, val_accuracy=dev_accuracies)
+weights = [ layer.weights for layer in neural_network.layers ]
 
 # See Metrics
 print(f"Accuracy: {100*accuracy}%")
@@ -52,5 +57,8 @@ show_error_samples(X_test, y_test_labels, predictions, class_names, 15)
 plot_class_distribution(y_test_labels, predictions, class_names)
 plot_feature_importance(neural_network.layers[0].weights, [str(i//28) + ", " + str(i%28) for i in range(784)], 50)
 visualize_first_layer_weights(neural_network.layers[0].weights)
+for i in range(len(neural_network.layers)):
+    visualize_effective_weights_for_layer(weights, target_layer_idx=i, input_shape=(28, 28), n_cols=8)
+
 
 
