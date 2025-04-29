@@ -2,9 +2,10 @@ import copy
 import numpy as np
 
 from Utils import random_mini_batches
+from Objectives import compute_frobenius_norm
 
 class Layer:
-    def __init__(self, num_neurons, num_neurons_previous, activation_function, initialization, optimizer_template):
+    def __init__(self, num_neurons, num_neurons_previous, activation_function, initialization, optimizer_template, lambd=0.0):
         self.weights = initialization.initialize_weights(num_neurons, num_neurons_previous)
         self.biases = initialization.initialize_biases(num_neurons) # Assuming consistent naming
 
@@ -20,6 +21,9 @@ class Layer:
         self.weighted_sum = None
         self.weight_gradient = np.zeros_like(self.weights)
         self.bias_gradient = np.zeros_like(self.biases)
+
+        # Hyper Parameters
+        self.lambd = lambd
 
 
     def forward_propagate(self, A_prev):
@@ -44,6 +48,8 @@ class Layer:
         dZ = dA * self.activation_function.derivation(self.weighted_sum)
         self.weight_gradient = np.dot(dZ, self.activation_previous.T)
         self.bias_gradient = np.sum(dZ, axis=1, keepdims=True) / m
+        if self.lambd > 0:
+            self.weight_gradient += self.weights * self.lambd / m
         dA_prev = np.dot(self.weights.T, dZ)
         self.update_parameters()
         return dA_prev
@@ -63,7 +69,7 @@ class Layer:
 
 
 class Model:
-    def __init__(self, network_shape, activations, initialization, objective, optimizer):
+    def __init__(self, network_shape, activations, initialization, objective, optimizer, lambd=0.0):
         if len(activations) != len(network_shape) - 1:
             raise RuntimeError("Length of activations list must be len(network_shape) - 1")
 
@@ -72,6 +78,9 @@ class Model:
         self.initialization = initialization
         self.objective = objective
         self.optimizer_template = optimizer
+
+        # Hyperparameters
+        self.lambd = lambd
 
         self.layers = self.initialize_layers()
 
@@ -88,7 +97,8 @@ class Model:
             layer = Layer(num_neurons, num_neurons_previous,
                           activation_function,
                           self.initialization,
-                          optimizer_instance)
+                          optimizer_instance,
+                          self.lambd)
             layers.append(layer)
         return layers
 
@@ -122,15 +132,6 @@ class Model:
             epoch_cost_total = 0
             epoch_accuracy_total = 0
 
-            if X_dev is not None:
-                dev_AL = self.forward(X_dev)
-                dev_predictions = np.argmax(dev_AL, axis=0)
-                dev_true_labels = np.argmax(Y_dev, axis=0)
-                dev_epoch_cost = self.objective.cost(dev_AL, Y_dev) 
-                dev_epoch_accuracy = np.sum(dev_predictions == dev_true_labels) / X_dev.shape[1]
-                dev_costs.append(dev_epoch_cost)
-                dev_accuracies.append(dev_epoch_accuracy)
-
             # Iterate over all mini_batches
             for X_batch, Y_batch in mini_batches:
                 if X_batch.shape[1] == 0: continue
@@ -141,7 +142,7 @@ class Model:
                 # Calculate Train, Validation(Dev set) costs and accuracies
                 predictions = np.argmax(AL, axis=0)
                 true_labels = np.argmax(Y_batch, axis=0)
-                batch_cost = self.objective.cost(AL, Y_batch)
+                batch_cost = self.objective.cost(AL, Y_batch) + compute_frobenius_norm([ layer.weights for layer in self.layers ], self.lambd, X_batch.shape[1])
                 batch_accuracy = np.sum(predictions == true_labels)
                 epoch_cost_total += batch_cost * X_batch.shape[1]
                 epoch_accuracy_total += batch_accuracy
@@ -151,6 +152,16 @@ class Model:
 
                 self.backward(dAL)
 
+            if X_dev is not None:
+                dev_AL = self.forward(X_dev)
+                dev_predictions = np.argmax(dev_AL, axis=0)
+                dev_true_labels = np.argmax(Y_dev, axis=0)
+                dev_epoch_cost = self.objective.cost(dev_AL, Y_dev) + compute_frobenius_norm(
+                    [layer.weights for layer in self.layers], self.lambd, X_dev.shape[1])
+                dev_epoch_accuracy = np.sum(dev_predictions == dev_true_labels) / X_dev.shape[1]
+                dev_costs.append(dev_epoch_cost)
+                dev_accuracies.append(dev_epoch_accuracy)
+
             # Keep cost and accuracy history
             cost_avg = epoch_cost_total / m
             accuracy_avg = epoch_accuracy_total / m
@@ -158,7 +169,6 @@ class Model:
             accuracies.append(accuracy_avg)
 
             # If a dev set is passed, calculate accuracy and costs
-
 
             if print_cost_every > 0 and (i % print_cost_every == 0 or i == epochs - 1):
                 print(f"Epoch {i}:")
