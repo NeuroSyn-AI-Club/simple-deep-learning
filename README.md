@@ -9,11 +9,11 @@ This project aims to be a small sized deep learning toolkit for experimenting an
 - Add function descriptions
 - Add a requirements.txt file
 - Add GPU acceleration using CuPy
-- Add weight decay (Cost function + frobenius norm)
-- Add validation(dev) sets and accuracy measures during training
 - ...
 
 # Completed:
 - Switch project paradigm to oop from fp
 - Implement Adam optimizer
 - Add more activation functions
+- Add weight decay (Cost function + frobenius norm)
+- Add validation(dev) sets and accuracy measures during training
