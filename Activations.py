@@ -64,3 +64,11 @@ class Swish:
         sigmoid_Z = self.sigmoid(Z)
         Z_prime = sigmoid_Z + Z * sigmoid_Z * (1 - sigmoid_Z) * self.beta
         return Z_prime
+
+
+class Identity:
+    def activation(self, Z):
+        return Z
+
+    def derivation(self, Z):
+        return 1

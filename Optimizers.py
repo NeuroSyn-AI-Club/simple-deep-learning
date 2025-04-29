@@ -88,3 +88,39 @@ class AdamOptimizer:
         update_b = -self.learning_rate * corrected_moment1_b / (np.sqrt(corrected_moment2_b) + self.epsilon)
 
         return update_W, update_b
+
+
+class RMSprop:
+    def __init__(self, learning_rate, beta, epsilon):
+        self.learning_rate = learning_rate
+        self.beta = beta
+        self.epsilon = epsilon
+        self.timestep = 0
+        self._built = False
+
+        self.squared_W = 0
+        self.squared_b = 0
+
+    def build(self, weights_shape, biases_shape):
+        if self._built:
+            return  # Avoid re-initialization
+
+        self.squared_W = np.zeros(weights_shape)
+        self.squared_b = np.zeros(biases_shape)
+        self._built = True
+
+    def update_parameters(self, weights_gradient, bias_gradient):
+        if not self._built:
+            raise RuntimeError("Optimizer state not initialized. Call build() before update_parameters().")
+        self.timestep += 1
+
+        self.squared_W = self.beta * self.squared_W + (1 - self.beta) * np.square(weights_gradient)
+        self.squared_b = self.beta * self.squared_b + (1 - self.beta) * np.square(bias_gradient)
+
+        # Unsure if bias correction is a part of the original RMSprop algorithm, but I don't think it would hurt.
+        corrected_squared_W = self.squared_W / (1 - np.power(self.beta, self.timestep))
+        corrected_squared_b = self.squared_b / (1 - np.power(self.beta, self.timestep))
+        update_W = -self.learning_rate * weights_gradient / (np.sqrt(corrected_squared_W) + self.epsilon)
+        update_b = -self.learning_rate * bias_gradient / (np.sqrt(corrected_squared_b) + self.epsilon)
+
+        return update_W, update_b
